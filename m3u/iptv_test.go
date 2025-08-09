@@ -1,11 +1,22 @@
 package m3u
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"testing"
+	"time"
 )
 
+func getIPTVfilter() *IPTVFilter {
+	return &IPTVFilter{
+		Client:  http.Client{},
+		Timeout: 5 * time.Second,
+	}
+}
+
 func TestLoadChannelsFromM3U(t *testing.T) {
+	iptvFilter := getIPTVfilter()
 	tests := []struct {
 		name    string
 		content string
@@ -62,11 +73,35 @@ http://example.com/stream3.m3u8`,
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := LoadChannelsFromM3U(tt.content)
+			got := iptvFilter.LoadChannelsFromM3U(tt.content)
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("loadChannelsFromM3U() = %v, want %v", got, tt.want)
 			}
 		})
 	}
 
+}
+
+func TestTestStream(t *testing.T) {
+	iptvFilter := getIPTVfilter()
+	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer testServer.Close()
+
+	tests := []struct {
+		url  string
+		want bool
+	}{
+		{testServer.URL, true},
+		{"http://example.com/404", false}}
+
+	for _, test := range tests {
+		t.Run(test.url, func(t *testing.T) {
+			got := iptvFilter.testStream(test.url)
+			if got != test.want {
+				t.Errorf("want %v, got %v", test.want, got)
+			}
+		})
+	}
 }
