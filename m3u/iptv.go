@@ -1,9 +1,12 @@
 package m3u
 
 import (
+	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 )
@@ -52,6 +55,25 @@ func (f *IPTVFilter) FilterWorkingStreams(tvChannels []TVChannel) []TVChannel {
 	return workingChannels
 }
 
+func (f *IPTVFilter) DownloadM3U(url string) (string, error) {
+	resp, err := f.Client.Get(url)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+
+	content, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+
+	return string(content), nil
+}
+
 func (f *IPTVFilter) LoadChannelsFromM3U(content string) []TVChannel {
 	var tvChannels []TVChannel
 	lines := strings.Split(content, "\n")
@@ -71,4 +93,23 @@ func (f *IPTVFilter) LoadChannelsFromM3U(content string) []TVChannel {
 		}
 	}
 	return tvChannels
+}
+
+func (f *IPTVFilter) SaveFilteredM3U(channels []TVChannel, filename string) error {
+	file, err := os.Create(filename)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	writer := bufio.NewWriter(file)
+	defer writer.Flush()
+
+	writer.WriteString("#EXTM3U\n")
+	for _, channel := range channels {
+		writer.WriteString(channel.Info + "\n")
+		writer.WriteString(channel.URL + "\n")
+	}
+
+	return nil
 }
