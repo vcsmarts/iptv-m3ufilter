@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 set -e
 
-GO_VERSION="1.24.5"
+GO_VERSION="${GO_VERSION:-$(go list -m -f '{{.Version}}' go@latest)}"
+
 GO_TAR="go${GO_VERSION}.linux-amd64.tar.gz"
 GO_URL="https://go.dev/dl/${GO_TAR}"
 
 # Get the currently installed version of Go
-CURRENT_VERSION=$(go version 2>/dev/null | awk '{print $3}' | sed 's/^go//' || echo "")
+INSTALLED_VERSION=$(go version 2>/dev/null | awk '{print $3}' | sed 's/^go//' || echo "")
 version_greater_equal() {
     # Compare two version numbers
     # Usage: version_greater_equal version1 version2
@@ -28,16 +29,16 @@ confirm_upgrade() {
     esac
 }
 
-if [ -z "$CURRENT_VERSION" ]; then
+if [ -z "$INSTALLED_VERSION" ]; then
     echo "Go is not installed. Installing version ${GO_VERSION}..."
     confirm_upgrade
-elif version_greater_equal "$CURRENT_VERSION" "$GO_VERSION"; then
-    echo "You already have Go version ${CURRENT_VERSION} installed, which is >= ${GO_VERSION}. No upgrade needed."
+elif version_greater_equal "$INSTALLED_VERSION" "$GO_VERSION"; then
+    echo "You already have Go version ${INSTALLED_VERSION} installed, which is >= ${GO_VERSION}. No upgrade needed."
     exit 0
 else
-    echo "Current Go version: ${CURRENT_VERSION}"
+    echo "Installed Go version: ${INSTALLED_VERSION}"
     echo "Target Go version: ${GO_VERSION}"
-    echo "This will upgrade Go from version ${CURRENT_VERSION} to ${GO_VERSION}."
+    echo "This will upgrade Go from version ${INSTALLED_VERSION} to ${GO_VERSION}."
     confirm_upgrade
 fi
 
