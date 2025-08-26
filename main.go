@@ -16,7 +16,7 @@ func main() {
 	var (
 		m3uFileUrl = flag.String("m3u-file", "", "URL with the m3u file.")
 		outputDir  = flag.String("output", "./filtered", "Output directory for filtered M3U files.")
-		timeout    = flag.Int("timeout", 5, "timeout in seconds for each http request. Must be between 1-5.")
+		timeout    = flag.Int("timeout", 10, "timeout in seconds for each http request. Must be between 1-10.")
 		maxWorkers = flag.Int("max-workers", 2, "how many requests workers/requests can be done at same time.")
 	)
 
@@ -36,7 +36,7 @@ func main() {
 		log.Printf("Invalid URL: %s\n", parsedURL)
 		os.Exit(1)
 	}
-	if *timeout < 1 || *timeout > 5 {
+	if *timeout < 1 || *timeout > 10 {
 		log.Printf("invalid timeout\n")
 		os.Exit(1)
 	}

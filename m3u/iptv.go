@@ -27,9 +27,8 @@ type IPTVFilter struct {
 	MaxWorkers int
 }
 
-func (f *IPTVFilter) testStream(url string) bool {
-
-	ctx, cancel := context.WithTimeout(context.Background(), f.Timeout)
+func (f *IPTVFilter) quickHeadCheck(url string) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), f.Timeout/2)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, "HEAD", url, nil)
@@ -37,14 +36,51 @@ func (f *IPTVFilter) testStream(url string) bool {
 		return false
 	}
 	req.Header.Set("User-Agent", "VLC/3.0.0 LibVLC/3.0.0")
+
 	res, err := f.Client.Do(req)
 	if err != nil {
 		return false
 	}
-
 	defer res.Body.Close()
 
-	return res.StatusCode == http.StatusOK
+	// Accept both OK and partial content responses
+	return res.StatusCode == http.StatusOK || res.StatusCode == http.StatusPartialContent
+}
+
+func (f *IPTVFilter) verifyStreamData(url string) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), f.Timeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		log.Printf("[%.50s] Error occurred: %s ", url, err.Error())
+		return false
+	}
+	req.Header.Set("User-Agent", "VLC/3.0.0 LibVLC/3.0.0")
+	req.Header.Set("Range", "bytes=0-4095") // First 4KB
+
+	res, err := f.Client.Do(req)
+	if err != nil {
+		log.Printf("[%.50s] Error occurred: %s ", url, err.Error())
+		return false
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode != http.StatusOK && res.StatusCode != http.StatusPartialContent {
+		return false
+	}
+
+	// Read a small amount to verify data flows
+	buffer := make([]byte, 1024)
+	_, err = res.Body.Read(buffer)
+	return err == nil || err == io.EOF
+}
+
+func (f *IPTVFilter) testStream(url string) bool {
+	if !f.quickHeadCheck(url) {
+		return false
+	}
+	return f.verifyStreamData(url)
 }
 
 func (f *IPTVFilter) worker(jobChannel <-chan TVChannel, jobResultChannel chan<- TVChannel, wg *sync.WaitGroup) {
