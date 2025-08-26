@@ -5,13 +5,16 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 )
 
 const DIRECTIVE_TRACK_INFO = "#EXTINF:"
+const JOBS_RESULTS_BUFFER_MULTIPLIER = 3
 
 type TVChannel struct {
 	Info string
@@ -19,8 +22,9 @@ type TVChannel struct {
 }
 
 type IPTVFilter struct {
-	Client  http.Client
-	Timeout time.Duration
+	Client     http.Client
+	Timeout    time.Duration
+	MaxWorkers int
 }
 
 func (f *IPTVFilter) testStream(url string) bool {
@@ -43,14 +47,46 @@ func (f *IPTVFilter) testStream(url string) bool {
 	return res.StatusCode == http.StatusOK
 }
 
-func (f *IPTVFilter) FilterWorkingStreams(tvChannels []TVChannel) []TVChannel {
-	var workingChannels []TVChannel
-
-	for i, ch := range tvChannels {
-		fmt.Printf("Testing channel %d of %d\n", i+1, len(tvChannels))
-		if f.testStream(ch.URL) {
-			workingChannels = append(workingChannels, ch)
+func (f *IPTVFilter) worker(jobChannel <-chan TVChannel, jobResultChannel chan<- TVChannel, wg *sync.WaitGroup) {
+	defer wg.Done()
+	for tvChannel := range jobChannel {
+		if f.testStream(tvChannel.URL) {
+			jobResultChannel <- tvChannel
 		}
+	}
+}
+
+func (f *IPTVFilter) FilterWorkingStreams(tvChannels []TVChannel) (workingChannels []TVChannel) {
+
+	jobChannel := make(chan TVChannel, f.MaxWorkers)
+	jobResultChannel := make(chan TVChannel, f.MaxWorkers*JOBS_RESULTS_BUFFER_MULTIPLIER)
+	wg := sync.WaitGroup{}
+
+	for i := 0; i < f.MaxWorkers; i++ {
+		wg.Add(1)
+		go f.worker(jobChannel, jobResultChannel, &wg)
+	}
+
+	// send jobs
+	go func() {
+		defer close(jobChannel)
+		for _, tvChannel := range tvChannels {
+			jobChannel <- tvChannel
+		}
+	}()
+
+	// close results channel once all workers are done
+	// results sent before close can still be read after the close.
+	go func() {
+		wg.Wait()
+		close(jobResultChannel)
+	}()
+
+	// collect results
+	for workingTvChannel := range jobResultChannel {
+		workingChannels = append(workingChannels, workingTvChannel)
+		log.Printf("[✓] %d/%d - Working: %.50s...",
+			len(workingChannels), len(tvChannels), workingTvChannel.URL)
 	}
 	return workingChannels
 }

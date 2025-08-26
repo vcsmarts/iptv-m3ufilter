@@ -15,8 +15,9 @@ import (
 func main() {
 	var (
 		m3uFileUrl = flag.String("m3u-file", "", "URL with the m3u file.")
-		outputDir  = flag.String("output", "./filtered", "Output directory for filtered M3U files")
-		timeout    = flag.Int("timeout", 5, "timeout in seconds for each http request. Must be between 1-5")
+		outputDir  = flag.String("output", "./filtered", "Output directory for filtered M3U files.")
+		timeout    = flag.Int("timeout", 5, "timeout in seconds for each http request. Must be between 1-5.")
+		maxWorkers = flag.Int("max-workers", 2, "how many requests workers/requests can be done at same time.")
 	)
 
 	flag.Usage = func() {
@@ -39,14 +40,20 @@ func main() {
 		log.Printf("invalid timeout\n")
 		os.Exit(1)
 	}
+	if *maxWorkers <= 0 {
+		log.Printf("invalid amount of workers. It must be at least 1.")
+		os.Exit(1)
+	}
+
 	if err := os.MkdirAll(*outputDir, 0755); err != nil {
 		log.Printf("Error creating output directory: %v", err)
 		os.Exit(1)
 	}
 
 	filter := m3u.IPTVFilter{
-		Client:  http.Client{},
-		Timeout: time.Duration(*timeout) * time.Second,
+		Client:     http.Client{},
+		Timeout:    time.Duration(*timeout) * time.Second,
+		MaxWorkers: *maxWorkers,
 	}
 
 	m3uContent, err := filter.DownloadM3U(*m3uFileUrl)
@@ -58,7 +65,7 @@ func main() {
 	filteredTvChannels := filter.FilterWorkingStreams(tvChannels)
 	outputPath := filepath.Join(*outputDir, "filtered.m3u")
 
-	if err := filter.SaveFilteredM3U(tvChannels, outputPath); err != nil {
+	if err := filter.SaveFilteredM3U(filteredTvChannels, outputPath); err != nil {
 		log.Printf("[%s] ❌ Error saving filtered M3U: %v", outputPath, err)
 	} else {
 		log.Printf("[%s] ✅ Saved %d working channels to %s", outputPath, len(filteredTvChannels), outputPath)
